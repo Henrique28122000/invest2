@@ -2,74 +2,75 @@
 import { Asset, AssetType, PortfolioItem } from "../types";
 
 /**
- * BUSCA DE DADOS DE MERCADO (Yahoo Finance API)
+ * SCRAPER STATUSINVEST
+ * Captura dados reais diretamente do HTML do site StatusInvest
  */
-export async function fetchRealMarketData(symbols: string[]) {
-  if (symbols.length === 0) return { data: [], sources: [] };
+async function scrapeStatusInvest(symbol: string): Promise<Partial<Asset> | null> {
+  const isFii = symbol.endsWith('11') && symbol.length >= 5;
+  const category = isFii ? 'fundos-imobiliarios' : 'acoes';
+  const url = `https://statusinvest.com.br/${category}/${symbol.toLowerCase()}`;
   
   try {
-    const yahooSymbols = symbols.map(s => s.endsWith('.SA') ? s : `${s}.SA`).join(',');
-    const proxyUrl = `https://api.allorigins.win/raw?url=`;
-    const targetUrl = encodeURIComponent(`https://query1.finance.yahoo.com/v7/finance/quote?symbols=${yahooSymbols}`);
-    
-    const response = await fetch(`${proxyUrl}${targetUrl}`);
-    if (!response.ok) throw new Error("Erro na rede");
-    
-    const json = await response.json();
-    const results = json?.quoteResponse?.result || [];
-    
-    const data = results.map((res: any) => ({
-      symbol: res.symbol.replace('.SA', ''),
-      price: res.regularMarketPrice || 0,
-      change: res.regularMarketChangePercent || 0,
-      name: res.longName || res.shortName || res.symbol,
-      yield: (res.trailingAnnualDividendYield) || 0,
-      lastDividendValue: res.trailingAnnualDividendRate || 0,
-      nextPaymentDate: "" 
-    }));
+    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+    const response = await fetch(proxyUrl);
+    const html = await response.text();
 
-    return { 
-      data, 
-      sources: [{ title: "B3 / Yahoo Finance", uri: "https://finance.yahoo.com" }] 
-    };
-  } catch (error) {
-    console.error("Erro ao buscar mercado:", error);
-    return { data: [], sources: [] };
-  }
-}
+    // Regex para extrair Preço Atual
+    const priceMatch = html.match(/title="Valor atual">[\s\S]*?<strong class="value">([\d,.]+)<\/strong>/);
+    // Regex para extrair Dividend Yield
+    const yieldMatch = html.match(/title="Dividend Yield">[\s\S]*?<strong class="value">([\d,.]+)<\/strong>/);
+    // Regex para extrair Nome da Empresa/Fundo
+    const nameMatch = html.match(/<h1 class="lh-4">([\s\S]*?)<small>/);
+    // Regex para Variação (Dia)
+    const changeMatch = html.match(/<span>Variação \(dia\)<\/span>[\s\S]*?<b class="[^"]*">([\d,.-]+)%<\/b>/);
 
-export async function searchAssetDetails(symbol: string): Promise<Asset | null> {
-  try {
-    const cleanSymbol = symbol.trim().toUpperCase().replace('.SA', '');
-    if (!cleanSymbol) return null;
+    if (!priceMatch) return null;
 
-    const proxyUrl = `https://api.allorigins.win/raw?url=`;
-    const targetUrl = encodeURIComponent(`https://query1.finance.yahoo.com/v7/finance/quote?symbols=${cleanSymbol}.SA`);
-    
-    const response = await fetch(`${proxyUrl}${targetUrl}`);
-    const json = await response.json();
-    const res = json?.quoteResponse?.result?.[0];
-
-    if (!res) return null;
+    const price = parseFloat(priceMatch[1].replace('.', '').replace(',', '.'));
+    const dy = yieldMatch ? parseFloat(yieldMatch[1].replace(',', '.')) / 100 : 0;
+    const name = nameMatch ? nameMatch[1].trim() : symbol;
+    const change = changeMatch ? parseFloat(changeMatch[1].replace(',', '.')) : 0;
 
     return {
-      symbol: cleanSymbol,
-      name: res.longName || res.shortName || cleanSymbol,
-      price: res.regularMarketPrice || 0,
-      type: cleanSymbol.length === 6 ? AssetType.FII : AssetType.STOCK,
-      change: res.regularMarketChangePercent || 0,
-      yield: res.trailingAnnualDividendYield || 0,
-      lastDividendValue: res.trailingAnnualDividendRate || 0,
-      nextPaymentDate: ""
+      symbol: symbol.toUpperCase(),
+      name,
+      price,
+      yield: dy,
+      change,
+      type: isFii ? AssetType.FII : AssetType.STOCK
     };
-  } catch (e) {
+  } catch (error) {
+    console.error(`Erro ao scrapar ${symbol}:`, error);
     return null;
   }
 }
 
 /**
- * MOTOR ESTRATÉGICO B3 (Substitui a IA Gemini)
- * Analisa a carteira localmente e gera insights baseados em métricas financeiras.
+ * BUSCA DE DADOS DE MERCADO (StatusInvest Scraper)
+ */
+export async function fetchRealMarketData(symbols: string[]) {
+  if (symbols.length === 0) return { data: [], sources: [] };
+  
+  // Para evitar lentidão extrema e bloqueio de proxy, limitamos a 8 ativos por vez 
+  // priorizando os primeiros da lista (geralmente os da carteira)
+  const symbolsToFetch = symbols.slice(0, 10);
+  const results = await Promise.all(symbolsToFetch.map(s => scrapeStatusInvest(s)));
+  
+  const data = results.filter((r): r is Asset => r !== null);
+
+  return { 
+    data, 
+    sources: [{ title: "StatusInvest (Real-time Scraping)", uri: "https://statusinvest.com.br" }] 
+  };
+}
+
+export async function searchAssetDetails(symbol: string): Promise<Asset | null> {
+  const result = await scrapeStatusInvest(symbol);
+  return result as Asset || null;
+}
+
+/**
+ * MOTOR ESTRATÉGICO B3 (Local)
  */
 export function getPortfolioAdvice(portfolio: PortfolioItem[]) {
   if (portfolio.length === 0) return { text: "Adicione ativos para receber uma análise estratégica da sua carteira." };
@@ -78,34 +79,17 @@ export function getPortfolioAdvice(portfolio: PortfolioItem[]) {
   const fiis = portfolio.filter(p => p.asset.type === AssetType.FII);
   const totalValue = portfolio.reduce((acc, p) => acc + (p.quantity * p.asset.price), 0);
   
+  if (totalValue === 0) return { text: "Aguardando atualização de preços para análise..." };
+
   const stockWeight = stocks.reduce((acc, p) => acc + (p.quantity * p.asset.price), 0) / totalValue;
   const fiiWeight = fiis.reduce((acc, p) => acc + (p.quantity * p.asset.price), 0) / totalValue;
 
-  // Lógica de Insights
-  if (stockWeight > 0.8) {
-    return { text: "Sua carteira está muito exposta a Ações. Considere aumentar a posição em FIIs para reduzir a volatilidade e gerar renda passiva mensal." };
-  }
-  if (fiiWeight > 0.8) {
-    return { text: "Foco total em FIIs! Ótimo para renda, mas não esqueça que Ações podem oferecer maior potencial de crescimento de capital a longo prazo." };
-  }
-  if (portfolio.length < 5) {
-    return { text: "A diversificação é o único 'almoço grátis' no mercado financeiro. Considere adicionar mais setores para proteger seu patrimônio." };
-  }
+  if (stockWeight > 0.7) return { text: "Sua carteira está focada em crescimento (Ações). Considere FIIs para gerar renda mensal isenta." };
+  if (fiiWeight > 0.7) return { text: "Foco total em dividendos! Considere Ações de valor para não perder o crescimento do PIB." };
   
-  const highYielders = portfolio.filter(p => (p.asset.yield || 0) > 0.10);
-  if (highYielders.length > 0) {
-    return { text: `Você possui ativos de alto Yield como ${highYielders[0].asset.symbol}. Reinvista esses dividendos para acelerar o efeito dos juros compostos.` };
-  }
-
-  return { text: "Sua carteira parece bem equilibrada. Continue mantendo aportes constantes e foque no longo prazo." };
+  return { text: "Bela diversificação! Sua carteira segue um modelo equilibrado entre renda e crescimento." };
 }
 
 export function getSimulationInsight(total: number, aporte: number, anos: number) {
-  if (total > 1000000) {
-    return `Com este planejamento, você alcançará o patamar de Milionário em ${anos} anos. A disciplina é sua maior aliada.`;
-  }
-  if (aporte > 2000) {
-    return `Seus aportes de R$ ${aporte} são agressivos! Isso reduzirá drasticamente o tempo necessário para sua liberdade financeira.`;
-  }
-  return `O segredo não é quanto você ganha, mas quanto você aporta. Em ${anos} anos, seu esforço será recompensado.`;
+  return `O tempo é o senhor da razão. Com R$ ${aporte.toLocaleString()} mensais, você terá um império em ${anos} anos.`;
 }
