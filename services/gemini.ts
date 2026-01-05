@@ -2,26 +2,32 @@
 import { GoogleGenAI } from "@google/genai";
 import { Asset, AssetType } from "../types";
 
+// Função utilitária para limpar o JSON retornado pela IA (remove blocos de markdown)
+const cleanAIResponse = (text: string) => {
+  return text.replace(/```json/g, "").replace(/```/g, "").trim();
+};
+
 /**
  * Busca dados reais de qualquer ticker da B3 incluindo proventos exatos.
  */
 export async function searchAssetDetails(symbol: string): Promise<Asset | null> {
-  if (!process.env.API_KEY) return null;
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) return null;
   
-  // Sempre inicializa um novo cliente para garantir o uso da chave mais recente
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey });
   
-  const prompt = `Aja como um terminal financeiro Bloomberg. Busque agora:
-  1. Cotação atual da B3 para ${symbol}.
-  2. Último dividendo/rendimento pago (valor em R$).
-  3. Data prevista do próximo pagamento.
+  const prompt = `Aja como um terminal financeiro B3. Busque agora para o ticker ${symbol}:
+  1. Cotação atual (R$).
+  2. Último dividendo ou rendimento (valor exato em R$ por cota).
+  3. Data de pagamento deste último ou do próximo previsto.
+  4. Nome oficial e tipo (Ação ou FII).
   
-  Retorne EXCLUSIVAMENTE um JSON: 
+  Retorne EXCLUSIVAMENTE um JSON sem explicações: 
   {
     "symbol": "${symbol.toUpperCase()}", 
-    "name": "Nome da Empresa/Fundo", 
+    "name": "Nome", 
     "price": 0.00, 
-    "type": "Ação" ou "FII", 
+    "type": "Ação", 
     "change": 0.0, 
     "yield": 0.0, 
     "lastDividendValue": 0.00,
@@ -35,7 +41,7 @@ export async function searchAssetDetails(symbol: string): Promise<Asset | null> 
       config: { tools: [{ googleSearch: {} }] },
     });
 
-    const text = response.text || "";
+    const text = cleanAIResponse(response.text || "");
     const jsonMatch = text.match(/\{.*\}/s);
     if (jsonMatch) {
       const data = JSON.parse(jsonMatch[0]);
@@ -43,7 +49,7 @@ export async function searchAssetDetails(symbol: string): Promise<Asset | null> 
         symbol: data.symbol.toUpperCase(),
         name: data.name || data.symbol,
         price: Number(data.price) || 0,
-        type: String(data.type).includes('FII') ? AssetType.FII : AssetType.STOCK,
+        type: String(data.type).toLowerCase().includes('fii') ? AssetType.FII : AssetType.STOCK,
         change: Number(data.change) || 0,
         yield: Number(data.yield) || 0,
         lastDividendValue: Number(data.lastDividendValue) || 0,
@@ -58,15 +64,17 @@ export async function searchAssetDetails(symbol: string): Promise<Asset | null> 
 }
 
 /**
- * Sincroniza proventos e cotações para múltiplos ativos.
+ * Sincroniza proventos e cotações para múltiplos ativos de uma vez.
  */
 export async function fetchRealMarketData(symbols: string[]) {
-  if (!process.env.API_KEY || symbols.length === 0) return { data: [], sources: [] };
+  const apiKey = process.env.API_KEY;
+  if (!apiKey || symbols.length === 0) return { data: [], sources: [] };
   
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey });
 
-  const prompt = `Para os ativos B3: ${symbols.join(', ')}, retorne um array JSON com cotação atual, variação, dividend yield, o valor do último dividendo pago (R$) e a data do próximo pagamento.
-  Formato: [{"symbol": "TICKER", "price": 0.00, "change": 0.0, "yield": 0.0, "lastDividendValue": 0.00, "nextPaymentDate": "YYYY-MM-DD"}]`;
+  const prompt = `Forneça dados atuais para: ${symbols.join(', ')}.
+  Para cada um, preciso de: preço (R$), variação (%), dividend yield (decimal), valor do último dividendo pago (R$) e data do próximo/último pagamento (YYYY-MM-DD).
+  Retorne EXCLUSIVAMENTE um array JSON: [{"symbol": "TICKER", "price": 0.00, "change": 0.0, "yield": 0.0, "lastDividendValue": 0.00, "nextPaymentDate": "YYYY-MM-DD"}]`;
 
   try {
     const response = await ai.models.generateContent({
@@ -75,12 +83,12 @@ export async function fetchRealMarketData(symbols: string[]) {
       config: { tools: [{ googleSearch: {} }] },
     });
 
-    const text = response.text || "[]";
+    const text = cleanAIResponse(response.text || "[]");
     const jsonMatch = text.match(/\[.*\]/s);
     const data = jsonMatch ? JSON.parse(jsonMatch[0]) : [];
     
     const sources = response.candidates?.[0]?.groundingMetadata?.groundingChunks?.map((chunk: any) => ({
-      title: chunk.web?.title || 'B3 Info',
+      title: chunk.web?.title || 'B3 Market Data',
       uri: chunk.web?.uri || '#'
     })) || [];
 
@@ -92,37 +100,39 @@ export async function fetchRealMarketData(symbols: string[]) {
 }
 
 export async function getPortfolioAdvice(portfolio: any[]) {
-  if (!process.env.API_KEY || portfolio.length === 0) return { text: "Adicione ativos para análise." };
+  const apiKey = process.env.API_KEY;
+  if (!apiKey || portfolio.length === 0) return { text: "Adicione ativos para análise de proventos." };
   
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey });
 
-  const summary = portfolio.map(p => `${p.asset.symbol}: ${p.quantity} unidades`).join(', ');
-  const prompt = `Analise esta carteira B3 focando em geração de renda mensal e dividendos: ${summary}. Dê uma dica curta de rebalanceamento ou oportunidade.`;
+  const summary = portfolio.map(p => `${p.asset.symbol}: ${p.quantity} cotas`).join(', ');
+  const prompt = `Como analista da B3, avalie esta carteira focada em dividendos: ${summary}. Cite o potencial de renda passiva e se há concentração perigosa. Seja breve e encorajador.`;
   
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: prompt,
     });
-    return { text: response.text || "Análise indisponível no momento." };
+    return { text: response.text || "Monitorando seus dividendos..." };
   } catch {
-    return { text: "A IA está monitorando os proventos da sua carteira..." };
+    return { text: "A IA está processando as datas de corte da B3..." };
   }
 }
 
 export async function getSimulationInsight(total: number, aporte: number, anos: number) {
-  if (!process.env.API_KEY) return "A projeção de dividendos está ativa.";
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) return "A estratégia de reinvestimento de dividendos acelera o seu patrimônio.";
   
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey });
 
-  const prompt = `Mostre o efeito bola de neve de R$${total} + R$${aporte}/mês em ${anos} anos na B3, focando em como os dividendos aceleram a liberdade financeira.`;
+  const prompt = `Explique brevemente o 'Efeito Bola de Neve' de dividendos para um capital de R$${total} e aportes de R$${aporte} em ${anos} anos. Foque em como os proventos comprando novas cotas reduzem o tempo para a independência financeira.`;
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: prompt,
     });
-    return response.text || "Os juros compostos trabalham por você.";
+    return response.text || "Os juros compostos são a oitava maravilha do mundo.";
   } catch {
-    return "Reinvestir dividendos é o segredo do crescimento exponencial.";
+    return "Reinvestir dividendos é o segredo dos grandes investidores da B3.";
   }
 }
