@@ -1,8 +1,8 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, AreaChart, Area, XAxis, YAxis, CartesianGrid } from 'recharts';
-import { PortfolioItem, Asset } from '../types';
-import { TrendingUp, Sparkles, Coins, Calendar, Wallet, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+import { PortfolioItem, Asset, AssetType } from '../types';
+import { TrendingUp, Sparkles, Coins, Calendar, Wallet, ArrowUpRight, ArrowDownRight, Layers } from 'lucide-react';
 import { getPortfolioAdvice } from '../services/gemini';
 
 interface DashboardProps {
@@ -11,7 +11,13 @@ interface DashboardProps {
   cashBalance: number;
 }
 
-const COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981'];
+// Cores profissionais de terminal financeiro
+const CHART_COLORS = {
+  STOCK: '#6366f1', // Indigo
+  FII: '#f59e0b',   // Amber
+  CASH: '#10b981',  // Emerald
+  EMPTY: '#1e293b'  // Slate 800
+};
 
 const Dashboard: React.FC<DashboardProps> = ({ portfolio, marketAssets, cashBalance }) => {
   const [advice, setAdvice] = useState<string>('Sincronizando sua carteira com a B3...');
@@ -19,6 +25,8 @@ const Dashboard: React.FC<DashboardProps> = ({ portfolio, marketAssets, cashBala
   const summary = useMemo(() => {
     let totalInvested = 0;
     let currentAssetsValue = 0;
+    let stocksValue = 0;
+    let fiisValue = 0;
     let estimatedAnnualDividends = 0;
     const upcomingPayments: any[] = [];
 
@@ -30,12 +38,16 @@ const Dashboard: React.FC<DashboardProps> = ({ portfolio, marketAssets, cashBala
       totalInvested += item.quantity * item.averagePrice;
       currentAssetsValue += itemValue;
       
-      // Cálculo de dividend yield projetado
+      if (item.asset.type === AssetType.STOCK) {
+        stocksValue += itemValue;
+      } else if (item.asset.type === AssetType.FII) {
+        fiisValue += itemValue;
+      }
+      
       if (currentAsset.yield) {
         estimatedAnnualDividends += itemValue * currentAsset.yield;
       }
 
-      // Detalhamento do pagamento por cota
       if (currentAsset.nextPaymentDate && currentAsset.lastDividendValue) {
         upcomingPayments.push({
           symbol: currentAsset.symbol,
@@ -52,7 +64,30 @@ const Dashboard: React.FC<DashboardProps> = ({ portfolio, marketAssets, cashBala
     const profit = netWorth - totalInvested;
     const profitPercentage = totalInvested > 0 ? (profit / totalInvested) * 100 : 0;
 
-    return { totalInvested, netWorth, profit, profitPercentage, estimatedAnnualDividends, upcomingPayments, currentAssetsValue };
+    // Dados para o gráfico de composição real
+    const chartData = [
+      { name: 'Ações', value: stocksValue, color: CHART_COLORS.STOCK },
+      { name: 'FIIs', value: fiisValue, color: CHART_COLORS.FII },
+      { name: 'Liquidez', value: cashBalance, color: CHART_COLORS.CASH }
+    ].filter(d => d.value > 0);
+
+    // Se estiver vazio, mostra um placeholder
+    if (chartData.length === 0) {
+      chartData.push({ name: 'Vazio', value: 1, color: CHART_COLORS.EMPTY });
+    }
+
+    return { 
+      totalInvested, 
+      netWorth, 
+      profit, 
+      profitPercentage, 
+      estimatedAnnualDividends, 
+      upcomingPayments, 
+      currentAssetsValue,
+      chartData,
+      stocksValue,
+      fiisValue
+    };
   }, [portfolio, marketAssets, cashBalance]);
 
   useEffect(() => {
@@ -73,7 +108,7 @@ const Dashboard: React.FC<DashboardProps> = ({ portfolio, marketAssets, cashBala
              <Wallet size={24} className="text-emerald-400" />
            </div>
            <div>
-             <p className="text-[10px] uppercase font-black text-slate-500 tracking-[0.2em]">Saldo Acumulado</p>
+             <p className="text-[10px] uppercase font-black text-slate-500 tracking-[0.2em]">Saldo em Conta</p>
              <p className="text-xl font-black text-emerald-400">R$ {cashBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
            </div>
         </div>
@@ -86,12 +121,12 @@ const Dashboard: React.FC<DashboardProps> = ({ portfolio, marketAssets, cashBala
           <p className="text-[10px] uppercase font-black text-indigo-100/60 tracking-widest mb-2">Patrimônio Líquido</p>
           <h3 className="text-3xl font-black text-white tracking-tight">R$ {summary.netWorth.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h3>
           <div className="mt-4 flex items-center gap-2">
-            <span className="text-[10px] bg-white/20 px-2 py-1 rounded-full text-white font-black">MERCADO + SALDO</span>
+            <span className="text-[10px] bg-white/20 px-2 py-1 rounded-full text-white font-black">ESTRATÉGIA TOTAL</span>
           </div>
         </div>
 
-        <div className="p-8 bg-slate-900 border border-slate-800 rounded-[2.5rem]">
-          <p className="text-[10px] uppercase font-black text-slate-500 tracking-widest mb-2">Renda Passiva Anual</p>
+        <div className="p-8 bg-slate-900 border border-slate-800 rounded-[2.5rem] shadow-xl">
+          <p className="text-[10px] uppercase font-black text-slate-500 tracking-widest mb-2">Proventos Estimados (Ano)</p>
           <div className="flex items-center gap-3">
             <h3 className="text-3xl font-black text-emerald-400 tracking-tight">R$ {summary.estimatedAnnualDividends.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h3>
             <Coins size={24} className="text-emerald-500" />
@@ -99,8 +134,8 @@ const Dashboard: React.FC<DashboardProps> = ({ portfolio, marketAssets, cashBala
           <p className="text-[10px] text-slate-500 font-bold mt-3 uppercase tracking-wider">Média de R$ {(summary.estimatedAnnualDividends / 12).toLocaleString('pt-BR')} / mês</p>
         </div>
 
-        <div className="p-8 bg-slate-900 border border-slate-800 rounded-[2.5rem]">
-          <p className="text-[10px] uppercase font-black text-slate-500 tracking-widest mb-2">Retorno Total (P/L)</p>
+        <div className="p-8 bg-slate-900 border border-slate-800 rounded-[2.5rem] shadow-xl">
+          <p className="text-[10px] uppercase font-black text-slate-500 tracking-widest mb-2">Lucro/Prejuízo Total</p>
           <div className="flex items-center gap-2">
              <h3 className={`text-3xl font-black tracking-tight ${summary.profit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                R$ {summary.profit.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
@@ -108,31 +143,31 @@ const Dashboard: React.FC<DashboardProps> = ({ portfolio, marketAssets, cashBala
              {summary.profit >= 0 ? <ArrowUpRight className="text-emerald-500" /> : <ArrowDownRight className="text-rose-500" />}
           </div>
           <p className={`text-[11px] mt-2 font-black ${summary.profit >= 0 ? 'text-emerald-500/70' : 'text-rose-500/70'}`}>
-            {summary.profitPercentage.toFixed(2)}% sobre o capital
+            {summary.profitPercentage.toFixed(2)}% sobre aportes
           </p>
         </div>
 
-        <div className="p-8 bg-slate-900 border border-slate-800 rounded-[2.5rem]">
-          <p className="text-[10px] uppercase font-black text-slate-500 tracking-widest mb-2">Capital de Risco</p>
+        <div className="p-8 bg-slate-900 border border-slate-800 rounded-[2.5rem] shadow-xl">
+          <p className="text-[10px] uppercase font-black text-slate-500 tracking-widest mb-2">Total em Custódia</p>
           <h3 className="text-3xl font-black text-slate-400 tracking-tight">R$ {summary.currentAssetsValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h3>
-          <p className="text-[10px] text-slate-500 mt-3 font-bold uppercase tracking-wider">Valor em Ações e FIIs</p>
+          <p className="text-[10px] text-slate-500 mt-3 font-bold uppercase tracking-wider">Valor Ativo em Bolsa</p>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Próximos Dividendos */}
-        <div className="lg:col-span-2 p-10 bg-slate-900 border border-slate-800 rounded-[3rem] shadow-xl">
+        <div className="lg:col-span-2 p-10 bg-slate-900 border border-slate-800 rounded-[3rem] shadow-2xl">
           <div className="flex items-center justify-between mb-8">
             <h4 className="text-2xl font-black uppercase tracking-tighter flex items-center gap-3">
               <Calendar size={28} className="text-indigo-500" />
               Proventos Provisionados
             </h4>
-            <span className="text-[10px] font-black text-slate-500 uppercase bg-slate-800 px-3 py-1 rounded-full">Agenda B3</span>
+            <span className="text-[10px] font-black text-slate-500 uppercase bg-slate-800 px-3 py-1 rounded-full tracking-widest">Radar B3</span>
           </div>
           <div className="space-y-4 overflow-y-auto max-h-[380px] pr-4 custom-scrollbar">
             {summary.upcomingPayments.length > 0 ? (
               summary.upcomingPayments.map((payment, i) => (
-                <div key={i} className="flex items-center justify-between p-6 bg-slate-800/30 rounded-3xl border border-slate-700/50 hover:border-indigo-500/30 transition-all group">
+                <div key={i} className="flex items-center justify-between p-6 bg-slate-800/20 rounded-3xl border border-slate-700/50 hover:border-indigo-500/30 transition-all group">
                   <div className="flex items-center gap-6">
                     <div className="w-16 h-16 bg-indigo-600/10 rounded-2xl flex flex-col items-center justify-center border border-indigo-500/20 group-hover:bg-indigo-600/20 transition-all">
                        <p className="text-[10px] font-black text-indigo-400 uppercase">{new Date(payment.date).toLocaleDateString('pt-BR', {month: 'short'})}</p>
@@ -140,62 +175,77 @@ const Dashboard: React.FC<DashboardProps> = ({ portfolio, marketAssets, cashBala
                     </div>
                     <div>
                       <p className="text-xl font-black group-hover:text-white transition-colors">{payment.symbol}</p>
-                      <p className="text-[11px] text-slate-500 font-bold uppercase tracking-widest">R$ {payment.perShare.toFixed(2)} por cota</p>
+                      <p className="text-[11px] text-slate-500 font-bold uppercase tracking-widest">R$ {payment.perShare.toFixed(2)} / cota</p>
                     </div>
                   </div>
                   <div className="text-right">
                     <p className="text-2xl font-black text-emerald-400 tracking-tight">R$ {payment.total.toFixed(2)}</p>
-                    <p className="text-[10px] text-slate-600 font-black uppercase tracking-widest">A Receber</p>
+                    <p className="text-[10px] text-slate-600 font-black uppercase tracking-widest">Provisionado</p>
                   </div>
                 </div>
               ))
             ) : (
-              <div className="text-center py-24 bg-slate-800/20 rounded-[2rem] border border-dashed border-slate-700">
-                <p className="text-slate-500 font-black uppercase tracking-widest text-xs italic">Nenhum pagamento detectado no radar da B3...</p>
+              <div className="text-center py-24 bg-slate-800/10 rounded-[2rem] border border-dashed border-slate-800/50">
+                <p className="text-slate-500 font-black uppercase tracking-widest text-xs italic">Aguardando novos anúncios da B3...</p>
               </div>
             )}
           </div>
         </div>
 
-        {/* Composição */}
-        <div className="p-10 bg-slate-900 border border-slate-800 rounded-[3rem] flex flex-col items-center">
-          <h4 className="text-xl font-black uppercase tracking-tighter mb-10 w-full text-left">Estrutura de Riqueza</h4>
-          <div className="h-[250px] w-full relative">
+        {/* Gráfico de Estrutura de Riqueza (Realizado) */}
+        <div className="p-10 bg-slate-900 border border-slate-800 rounded-[3rem] shadow-2xl flex flex-col items-center">
+          <div className="w-full flex justify-between items-center mb-10">
+            <h4 className="text-xl font-black uppercase tracking-tighter flex items-center gap-2">
+              <Layers size={20} className="text-indigo-500" />
+              Diversificação
+            </h4>
+            <div className="p-2 bg-slate-800 rounded-xl">
+              <span className="text-[10px] font-black text-slate-500">REAL-TIME</span>
+            </div>
+          </div>
+          
+          <div className="h-[280px] w-full relative">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie 
-                  data={[
-                    {name: 'Em Bolsa', value: summary.currentAssetsValue}, 
-                    {name: 'Liquidez', value: cashBalance}
-                  ]} 
-                  innerRadius={70} 
-                  outerRadius={100} 
-                  paddingAngle={10} 
+                  data={summary.chartData} 
+                  innerRadius={80} 
+                  outerRadius={110} 
+                  paddingAngle={8} 
                   dataKey="value"
                   stroke="none"
+                  animationDuration={1500}
                 >
-                  <Cell fill="#6366f1" />
-                  <Cell fill="#10b981" />
+                  {summary.chartData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
                 </Pie>
                 <Tooltip 
-                  contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '20px', fontWeight: 'bold' }}
+                  contentStyle={{ 
+                    backgroundColor: '#0f172a', 
+                    border: '1px solid #1e293b', 
+                    borderRadius: '16px', 
+                    padding: '12px',
+                    boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.5)'
+                  }}
+                  itemStyle={{ color: '#fff', fontSize: '12px', fontWeight: '900', textTransform: 'uppercase' }}
+                  cursor={{ fill: 'transparent' }}
+                  formatter={(value: number) => `R$ ${value.toLocaleString('pt-BR')}`}
                 />
               </PieChart>
             </ResponsiveContainer>
+            
             <div className="absolute inset-0 m-auto flex flex-col items-center justify-center pointer-events-none">
-               <p className="text-[10px] font-black text-slate-500 uppercase">Diversificação</p>
-               <p className="text-lg font-black">{((summary.currentAssetsValue / summary.netWorth) * 100).toFixed(0)}% / {((cashBalance / summary.netWorth) * 100).toFixed(0)}%</p>
+               <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Patrimônio</p>
+               <p className="text-2xl font-black tracking-tighter">R$ {Math.round(summary.netWorth / 1000)}k</p>
+               <div className="h-1 w-8 bg-indigo-500 rounded-full mt-2" />
             </div>
           </div>
-          <div className="mt-10 space-y-4 w-full">
-             <div className="flex items-center justify-between p-4 bg-slate-800/30 rounded-2xl border border-slate-700/50">
-                <div className="flex items-center gap-3"><div className="w-3 h-3 bg-indigo-500 rounded-full shadow-[0_0_10px_rgba(99,102,241,0.5)]" /><span className="text-xs font-bold text-slate-300">Ações e FIIs</span></div>
-                <span className="text-xs font-black">R$ {summary.currentAssetsValue.toLocaleString('pt-BR')}</span>
-             </div>
-             <div className="flex items-center justify-between p-4 bg-slate-800/30 rounded-2xl border border-slate-700/50">
-                <div className="flex items-center gap-3"><div className="w-3 h-3 bg-emerald-500 rounded-full shadow-[0_0_10px_rgba(16,185,129,0.5)]" /><span className="text-xs font-bold text-slate-300">Dividendos em Conta</span></div>
-                <span className="text-xs font-black">R$ {cashBalance.toLocaleString('pt-BR')}</span>
-             </div>
+
+          <div className="mt-8 space-y-3 w-full">
+             <LegendItem color={CHART_COLORS.STOCK} label="Ações" value={summary.stocksValue} total={summary.netWorth} />
+             <LegendItem color={CHART_COLORS.FII} label="FIIs" value={summary.fiisValue} total={summary.netWorth} />
+             <LegendItem color={CHART_COLORS.CASH} label="Liquidez" value={cashBalance} total={summary.netWorth} />
           </div>
         </div>
       </div>
@@ -210,12 +260,31 @@ const Dashboard: React.FC<DashboardProps> = ({ portfolio, marketAssets, cashBala
             <Sparkles size={32} className="text-white" />
           </div>
           <div>
-            <h4 className="text-2xl font-black text-white mb-2 uppercase tracking-tighter">Gemini Finance Insight</h4>
+            <h4 className="text-2xl font-black text-white mb-2 uppercase tracking-tighter flex items-center gap-2">
+              Gemini Financial AI
+              <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            </h4>
             <p className="text-indigo-100/70 leading-relaxed italic text-xl max-w-5xl font-medium">
               "{advice}"
             </p>
           </div>
         </div>
+      </div>
+    </div>
+  );
+};
+
+const LegendItem: React.FC<{color: string, label: string, value: number, total: number}> = ({ color, label, value, total }) => {
+  const percent = total > 0 ? (value / total) * 100 : 0;
+  return (
+    <div className="flex items-center justify-between p-4 bg-slate-800/30 rounded-2xl border border-slate-700/50 hover:bg-slate-800/50 transition-colors">
+      <div className="flex items-center gap-3">
+        <div className="w-3 h-3 rounded-full shadow-lg" style={{ backgroundColor: color, boxShadow: `0 0 10px ${color}80` }} />
+        <span className="text-xs font-bold text-slate-300">{label}</span>
+      </div>
+      <div className="text-right">
+        <p className="text-xs font-black">R$ {value.toLocaleString('pt-BR')}</p>
+        <p className="text-[10px] font-black text-slate-500">{percent.toFixed(1)}%</p>
       </div>
     </div>
   );
