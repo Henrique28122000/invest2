@@ -1,0 +1,71 @@
+
+import { Asset, AssetType } from './types';
+
+export const B3_SUGGESTIONS: Asset[] = [
+  // AÇÕES - BLUE CHIPS & POPULARES
+  { symbol: 'PETR4', name: 'Petrobras PN', type: AssetType.STOCK, price: 36.42, change: 1.2, yield: 0.14 },
+  { symbol: 'PETR3', name: 'Petrobras ON', type: AssetType.STOCK, price: 39.10, change: 0.8, yield: 0.14 },
+  { symbol: 'VALE3', name: 'Vale ON', type: AssetType.STOCK, price: 68.15, change: -0.5, yield: 0.08 },
+  { symbol: 'ITUB4', name: 'Itaú Unibanco PN', type: AssetType.STOCK, price: 32.10, change: 0.8, yield: 0.05 },
+  { symbol: 'BBDC4', name: 'Bradesco PN', type: AssetType.STOCK, price: 14.25, change: -1.4, yield: 0.06 },
+  { symbol: 'BBAS3', name: 'Banco do Brasil ON', type: AssetType.STOCK, price: 54.30, change: 1.5, yield: 0.10 },
+  { symbol: 'ABEV3', name: 'Ambev ON', type: AssetType.STOCK, price: 12.80, change: -0.2, yield: 0.06 },
+  { symbol: 'WEGE3', name: 'WEG ON', type: AssetType.STOCK, price: 38.90, change: 2.1, yield: 0.03 },
+  { symbol: 'MGLU3', name: 'Magazine Luiza ON', type: AssetType.STOCK, price: 2.15, change: -2.5, yield: 0.01 },
+  { symbol: 'VIIA3', name: 'Casas Bahia ON', type: AssetType.STOCK, price: 0.55, change: -4.2, yield: 0.00 },
+  { symbol: 'ITSA4', name: 'Itaúsa PN', type: AssetType.STOCK, price: 10.15, change: 0.3, yield: 0.07 },
+  { symbol: 'B3SA3', name: 'B3 ON', type: AssetType.STOCK, price: 11.40, change: -0.5, yield: 0.04 },
+  { symbol: 'ELET3', name: 'Eletrobras ON', type: AssetType.STOCK, price: 42.60, change: 1.1, yield: 0.03 },
+  { symbol: 'EQTL3', name: 'Equatorial ON', type: AssetType.STOCK, price: 32.15, change: 0.6, yield: 0.02 },
+  { symbol: 'LREN3', name: 'Lojas Renner ON', type: AssetType.STOCK, price: 16.40, change: -1.2, yield: 0.05 },
+  { symbol: 'RENT3', name: 'Localiza ON', type: AssetType.STOCK, price: 55.80, change: 0.9, yield: 0.03 },
+  { symbol: 'PRIO3', name: 'Prio ON', type: AssetType.STOCK, price: 45.20, change: 2.4, yield: 0.00 },
+  { symbol: 'HAPV3', name: 'Hapvida ON', type: AssetType.STOCK, price: 3.85, change: -0.5, yield: 0.01 },
+  { symbol: 'RADL3', name: 'RaiaDrogasil ON', type: AssetType.STOCK, price: 26.10, change: 0.4, yield: 0.02 },
+  { symbol: 'RAIL3', name: 'Rumo ON', type: AssetType.STOCK, price: 22.40, change: 0.7, yield: 0.02 },
+  { symbol: 'SUZB3', name: 'Suzano ON', type: AssetType.STOCK, price: 58.90, change: 1.5, yield: 0.04 },
+  { symbol: 'KLBN11', name: 'Klabin UNT', type: AssetType.STOCK, price: 22.15, change: 0.3, yield: 0.07 },
+  { symbol: 'JBSS3', name: 'JBS ON', type: AssetType.STOCK, price: 24.60, change: 0.8, yield: 0.05 },
+  { symbol: 'BRFS3', name: 'BRF ON', type: AssetType.STOCK, price: 14.20, change: 1.2, yield: 0.00 },
+  { symbol: 'GGBR4', name: 'Gerdau PN', type: AssetType.STOCK, price: 21.80, change: -0.4, yield: 0.09 },
+  { symbol: 'CSNA3', name: 'Siderúrgica Nac ON', type: AssetType.STOCK, price: 15.10, change: -1.1, yield: 0.12 },
+  { symbol: 'TOTS3', name: 'Totvs ON', type: AssetType.STOCK, price: 30.45, change: 0.5, yield: 0.02 },
+  { symbol: 'COGN3', name: 'Cogna ON', type: AssetType.STOCK, price: 2.45, change: -1.5, yield: 0.00 },
+  { symbol: 'CIEL3', name: 'Cielo ON', type: AssetType.STOCK, price: 5.35, change: 0.2, yield: 0.08 },
+  { symbol: 'GOLL4', name: 'Gol PN', type: AssetType.STOCK, price: 1.20, change: -5.0, yield: 0.00 },
+  { symbol: 'AZUL4', name: 'Azul PN', type: AssetType.STOCK, price: 12.45, change: -2.1, yield: 0.00 },
+  { symbol: 'CMIG4', name: 'Cemig PN', type: AssetType.STOCK, price: 11.85, change: 0.4, yield: 0.11 },
+  { symbol: 'CPLE6', name: 'Copel PNB', type: AssetType.STOCK, price: 9.40, change: 0.5, yield: 0.08 },
+  { symbol: 'SANB11', name: 'Santander UNT', type: AssetType.STOCK, price: 28.60, change: -0.3, yield: 0.09 },
+
+  // FIIs - FUNDOS IMOBILIÁRIOS POPULARES
+  { symbol: 'MXRF11', name: 'Maxi Renda', type: AssetType.FII, price: 10.55, change: 0.3, yield: 0.12 },
+  { symbol: 'HGLG11', name: 'CSHG Logística', type: AssetType.FII, price: 168.90, change: -0.2, yield: 0.08 },
+  { symbol: 'KNRI11', name: 'Kinea Renda Imob', type: AssetType.FII, price: 162.30, change: 0.1, yield: 0.07 },
+  { symbol: 'VISC11', name: 'Vinci Shopping Centers', type: AssetType.FII, price: 121.20, change: 0.4, yield: 0.085 },
+  { symbol: 'XPLG11', name: 'XP Logística', type: AssetType.FII, price: 108.45, change: 0.2, yield: 0.08 },
+  { symbol: 'XPML11', name: 'XP Malls', type: AssetType.FII, price: 118.20, change: 0.3, yield: 0.08 },
+  { symbol: 'HGRU11', name: 'CSHG Renda Urbana', type: AssetType.FII, price: 138.50, change: 0.1, yield: 0.08 },
+  { symbol: 'HGBS11', name: 'Hedge Brasil Shopping', type: AssetType.FII, price: 232.10, change: 0.4, yield: 0.08 },
+  { symbol: 'KNCR11', name: 'Kinea Rendimentos Imob', type: AssetType.FII, price: 104.20, change: 0.1, yield: 0.12 },
+  { symbol: 'CPTS11', name: 'Capitânia Securities', type: AssetType.FII, price: 8.45, change: -0.2, yield: 0.11 },
+  { symbol: 'IRDM11', name: 'Iridium Recebíveis', type: AssetType.FII, price: 78.40, change: -0.5, yield: 0.13 },
+  { symbol: 'VILG11', name: 'Vinci Logística', type: AssetType.FII, price: 92.15, change: 0.1, yield: 0.09 },
+  { symbol: 'BRCR11', name: 'BTG Pactual Corp Office', type: AssetType.FII, price: 58.30, change: -0.4, yield: 0.08 },
+  { symbol: 'JSRE11', name: 'JS Real Estate', type: AssetType.FII, price: 68.45, change: -0.2, yield: 0.08 },
+  { symbol: 'BCFF11', name: 'BTG Pactual Fundo de Fundo', type: AssetType.FII, price: 9.35, change: 0.1, yield: 0.10 },
+  { symbol: 'BTLG11', name: 'BTG Pactual Logística', type: AssetType.FII, price: 104.20, change: 0.2, yield: 0.09 },
+  { symbol: 'RECR11', name: 'Rec Recebíveis', type: AssetType.FII, price: 85.10, change: -0.1, yield: 0.12 },
+  { symbol: 'ALZR11', name: 'Alianza Trust Renda Imob', type: AssetType.FII, price: 115.40, change: 0.3, yield: 0.08 },
+  { symbol: 'MALL11', name: 'Malls Brasil Plural', type: AssetType.FII, price: 118.90, change: 0.2, yield: 0.08 },
+  { symbol: 'GARE11', name: 'Guardian Logística', type: AssetType.FII, price: 9.15, change: 0.0, yield: 0.11 },
+  { symbol: 'VGIR11', name: 'Valora REIC', type: AssetType.FII, price: 9.80, change: 0.1, yield: 0.13 },
+];
+
+export const MOCK_ASSETS = B3_SUGGESTIONS.slice(0, 10);
+
+export const INITIAL_PORTFOLIO = [
+  { id: '1', symbol: 'PETR4', quantity: 100, averagePrice: 32.50, purchaseDate: '2023-10-10' },
+  { id: '2', symbol: 'KNRI11', quantity: 20, averagePrice: 155.00, purchaseDate: '2023-11-15' },
+  { id: '3', symbol: 'MXRF11', quantity: 500, averagePrice: 10.10, purchaseDate: '2024-01-20' },
+];

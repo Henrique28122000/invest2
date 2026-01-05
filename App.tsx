@@ -1,0 +1,227 @@
+
+import React, { useState, useEffect } from 'react';
+import { HashRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
+import { 
+  LayoutDashboard, 
+  Wallet, 
+  TrendingUp, 
+  Calculator, 
+  User, 
+  RefreshCcw,
+  Zap,
+  Activity,
+  CheckCircle2,
+  Coins
+} from 'lucide-react';
+import { Asset, PortfolioItem } from './types';
+import { MOCK_ASSETS, INITIAL_PORTFOLIO, B3_SUGGESTIONS } from './constants';
+import Dashboard from './components/Dashboard';
+import Portfolio from './components/Portfolio';
+import Market from './components/Market';
+import Simulator from './components/Simulator';
+import { fetchRealMarketData } from './services/gemini';
+
+const App: React.FC = () => {
+  const [portfolio, setPortfolio] = useState<PortfolioItem[]>([]);
+  const [marketAssets, setMarketAssets] = useState<Asset[]>(MOCK_ASSETS);
+  const [cashBalance, setCashBalance] = useState<number>(0); // Dividendos recebidos e acumulados
+  const [sources, setSources] = useState<{title: string, uri: string}[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [lastSync, setLastSync] = useState<Date>(new Date());
+
+  // Inicializa a carteira de forma segura
+  useEffect(() => {
+    const initialized = INITIAL_PORTFOLIO.map(item => {
+      const asset = B3_SUGGESTIONS.find(a => a.symbol === item.symbol) || 
+                    MOCK_ASSETS.find(a => a.symbol === item.symbol);
+      
+      if (!asset) return null;
+      
+      // Remove o símbolo temporário usado para busca na inicialização
+      const { symbol, ...props } = item;
+      return { ...props, asset } as PortfolioItem;
+    }).filter((item): item is PortfolioItem => item !== null);
+
+    setPortfolio(initialized);
+    setLoading(false);
+  }, []);
+
+  // Sincronização com Mercado Real + Dividendos
+  const syncAllAssets = async () => {
+    if (isSyncing) return;
+    setIsSyncing(true);
+    
+    const allSymbols = Array.from(new Set([
+      ...marketAssets.map(a => a?.symbol),
+      ...portfolio.map(p => p?.asset?.symbol)
+    ])).filter((s): s is string => !!s);
+    
+    if (allSymbols.length === 0) {
+      setIsSyncing(false);
+      return;
+    }
+
+    try {
+      const result = await fetchRealMarketData(allSymbols);
+      
+      if (result.data && result.data.length > 0) {
+        setMarketAssets(prev => {
+          const updated = [...prev];
+          result.data.forEach((realAsset: any) => {
+            const index = updated.findIndex(a => a.symbol === realAsset.symbol);
+            const assetData = {
+              price: realAsset.price, 
+              change: realAsset.change,
+              yield: realAsset.yield,
+              lastDividendValue: realAsset.lastDividendValue,
+              nextPaymentDate: realAsset.nextPaymentDate
+            };
+
+            if (index !== -1) {
+              updated[index] = { ...updated[index], ...assetData };
+            } else {
+              const pItem = portfolio.find(p => p.asset.symbol === realAsset.symbol);
+              if (pItem) {
+                updated.push({ ...pItem.asset, ...assetData });
+              }
+            }
+          });
+          return updated;
+        });
+        setSources(result.sources);
+        setLastSync(new Date());
+
+        // Simulação: "Pagar" dividendos se a data de hoje for a data de pagamento
+        const today = new Date().toISOString().split('T')[0];
+        let totalReceivedToday = 0;
+        
+        portfolio.forEach(item => {
+          const mAsset = result.data.find((a: any) => a.symbol === item.asset.symbol);
+          if (mAsset && mAsset.nextPaymentDate === today && mAsset.lastDividendValue > 0) {
+            totalReceivedToday += item.quantity * mAsset.lastDividendValue;
+          }
+        });
+
+        if (totalReceivedToday > 0) {
+          setCashBalance(prev => prev + totalReceivedToday);
+          alert(`🎉 Você recebeu R$ ${totalReceivedToday.toFixed(2)} em dividendos hoje!`);
+        }
+      }
+    } catch (err) {
+      console.error("Erro na sincronização:", err);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!loading && portfolio.length > 0) syncAllAssets();
+  }, [loading, portfolio.length]);
+
+  useEffect(() => {
+    const interval = setInterval(() => syncAllAssets(), 600000); // 10 minutos
+    return () => clearInterval(interval);
+  }, [portfolio, marketAssets]);
+
+  // Engine de Preços (1s)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!isSyncing) {
+        setMarketAssets(prev => prev.map(asset => {
+          const delta = (Math.random() - 0.5) * (asset.price * 0.0002);
+          return { ...asset, price: Math.max(0.01, Number((asset.price + delta).toFixed(2))) };
+        }));
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isSyncing]);
+
+  const addAssetToPortfolio = (asset: Asset, quantity: number, price: number) => {
+    const newItem: PortfolioItem = {
+      id: Math.random().toString(36).substr(2, 9),
+      asset,
+      quantity,
+      averagePrice: price,
+      purchaseDate: new Date().toISOString().split('T')[0]
+    };
+    setPortfolio(prev => [...prev, newItem]);
+  };
+
+  const removeAssetFromPortfolio = (id: string) => {
+    setPortfolio(prev => prev.filter(item => item.id !== id));
+  };
+
+  if (loading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-slate-950 text-indigo-500 font-black">
+        <RefreshCcw className="animate-spin mr-3" /> CARREGANDO B3...
+      </div>
+    );
+  }
+
+  return (
+    <Router>
+      <div className="flex h-screen bg-slate-950 text-slate-100 overflow-hidden">
+        <aside className="hidden lg:flex flex-col w-64 bg-slate-900/40 border-r border-slate-800 p-6">
+          <div className="flex items-center gap-3 mb-10 px-2">
+            <div className="p-2.5 bg-indigo-600 rounded-2xl shadow-xl shadow-indigo-600/30">
+              <TrendingUp size={24} className="text-white" />
+            </div>
+            <h1 className="text-xl font-black tracking-tighter uppercase">B3 Master</h1>
+          </div>
+
+          <nav className="flex-1 space-y-2">
+            <SidebarLink to="/" icon={<LayoutDashboard size={18} />} label="Início" />
+            <SidebarLink to="/portfolio" icon={<Wallet size={18} />} label="Carteira" />
+            <SidebarLink to="/market" icon={<Activity size={18} />} label="Painel B3" />
+            <SidebarLink to="/simulator" icon={<Calculator size={18} />} label="Simulador" />
+          </nav>
+
+          <div className="mt-4 p-5 bg-emerald-600/10 rounded-3xl border border-emerald-500/20">
+            <div className="flex items-center gap-2 mb-2">
+              <Coins size={14} className="text-emerald-400" />
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Saldo Disponível</span>
+            </div>
+            <p className="text-lg font-black text-emerald-400">R$ {cashBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+            <p className="text-[9px] text-slate-500 font-bold mt-1">Dividendos Liquidados</p>
+          </div>
+
+          <div className="mt-6 pt-6 border-t border-slate-800">
+            <button 
+              onClick={syncAllAssets}
+              disabled={isSyncing}
+              className="w-full flex items-center justify-center gap-2 py-3 bg-indigo-600 hover:bg-indigo-500 rounded-2xl text-[10px] font-black uppercase text-white transition-all disabled:opacity-50"
+            >
+              {isSyncing ? <RefreshCcw className="animate-spin" size={14} /> : <Zap size={14} />}
+              Sincronizar B3
+            </button>
+          </div>
+        </aside>
+
+        <main className="flex-1 overflow-y-auto">
+          <div className="max-w-7xl mx-auto p-6 lg:p-12">
+            <Routes>
+              <Route path="/" element={<Dashboard portfolio={portfolio} marketAssets={marketAssets} cashBalance={cashBalance} />} />
+              <Route path="/portfolio" element={<Portfolio portfolio={portfolio} onRemove={removeAssetFromPortfolio} onAdd={addAssetToPortfolio} marketAssets={marketAssets} />} />
+              <Route path="/market" element={<Market marketAssets={marketAssets} sources={sources} />} />
+              <Route path="/simulator" element={<Simulator portfolio={portfolio} />} />
+            </Routes>
+          </div>
+        </main>
+      </div>
+    </Router>
+  );
+};
+
+const SidebarLink: React.FC<{to: string, icon: any, label: string}> = ({ to, icon, label }) => {
+  const location = useLocation();
+  const isActive = location.pathname === to;
+  return (
+    <Link to={to} className={`flex items-center gap-3 px-5 py-4 rounded-2xl transition-all ${isActive ? 'bg-indigo-600 text-white font-bold shadow-lg shadow-indigo-600/20' : 'text-slate-500 hover:text-white hover:bg-slate-800/40'}`}>
+      {icon} <span className="text-sm">{label}</span>
+    </Link>
+  );
+};
+
+export default App;
