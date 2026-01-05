@@ -6,26 +6,28 @@ import App from './App';
 const rootElement = document.getElementById('root');
 
 if (!rootElement) {
-  throw new Error("Could not find root element to mount to");
-}
-
-try {
-  const root = ReactDOM.createRoot(rootElement);
-  root.render(
-    <React.StrictMode>
-      <App />
-    </React.StrictMode>
-  );
-} catch (error) {
-  console.error("Erro crítico na montagem do React:", error);
-  rootElement.innerHTML = `
-    <div style="height: 100vh; display: flex; align-items: center; justify-content: center; background: #020617; color: #ef4444; font-family: sans-serif; text-align: center; padding: 20px;">
-      <div>
-        <h1 style="font-size: 24px; margin-bottom: 10px;">Erro de Inicialização</h1>
-        <p style="color: #94a3b8;">Houve um problema ao carregar o aplicativo. Por favor, verifique o console ou as variáveis de ambiente.</p>
-        <pre style="background: #1e293b; padding: 15px; border-radius: 8px; font-size: 12px; color: #f8fafc; margin-top: 20px; text-align: left; overflow: auto; max-width: 90vw;">${error instanceof Error ? error.message : String(error)}</pre>
-        <button onclick="window.location.reload()" style="margin-top: 20px; padding: 10px 20px; background: #4f46e5; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold;">Recarregar</button>
+  console.error("Elemento root não encontrado.");
+} else {
+  try {
+    const root = ReactDOM.createRoot(rootElement);
+    root.render(
+      <React.StrictMode>
+        <App />
+      </React.StrictMode>
+    );
+  } catch (error) {
+    console.error("Erro crítico na renderização:", error);
+    rootElement.innerHTML = `
+      <div style="height: 100vh; display: flex; align-items: center; justify-content: center; background: #020617; color: white; font-family: sans-serif; text-align: center; padding: 20px;">
+        <div style="max-width: 500px;">
+          <h1 style="color: #f43f5e; font-size: 24px; margin-bottom: 16px;">Falha no Carregamento</h1>
+          <p style="color: #94a3b8; margin-bottom: 24px;">Ocorreu um erro ao iniciar a aplicação React.</p>
+          <div style="background: #1e293b; padding: 16px; border-radius: 12px; text-align: left; overflow: auto; font-family: monospace; font-size: 13px; color: #f8fafc;">
+            ${error instanceof Error ? error.message : String(error)}
+          </div>
+          <button onclick="window.location.reload()" style="margin-top: 24px; padding: 12px 24px; background: #4f46e5; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold;">Tentar Novamente</button>
+        </div>
       </div>
-    </div>
-  `;
+    `;
+  }
 }

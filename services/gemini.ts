@@ -2,14 +2,24 @@
 import { GoogleGenAI } from "@google/genai";
 import { Asset, AssetType } from "../types";
 
-// Helper para limpar a resposta da IA caso venha com markdown
+// Função para obter a chave de forma segura
+const getApiKey = () => {
+  try {
+    return window.process?.env?.API_KEY || (typeof process !== 'undefined' ? process.env.API_KEY : '');
+  } catch {
+    return '';
+  }
+};
+
 const cleanAIResponse = (text: string) => {
   return text.replace(/```json/g, "").replace(/```/g, "").trim();
 };
 
 export async function searchAssetDetails(symbol: string): Promise<Asset | null> {
-  // Use process.env.API_KEY directly as per guidelines
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const apiKey = getApiKey();
+  if (!apiKey) return null;
+  
+  const ai = new GoogleGenAI({ apiKey });
   
   const prompt = `Aja como um terminal financeiro B3. Busque para o ticker ${symbol}:
   1. Cotação atual (R$).
@@ -49,9 +59,10 @@ export async function searchAssetDetails(symbol: string): Promise<Asset | null> 
 }
 
 export async function fetchRealMarketData(symbols: string[]) {
-  if (symbols.length === 0) return { data: [], sources: [] };
+  const apiKey = getApiKey();
+  if (!apiKey || symbols.length === 0) return { data: [], sources: [] };
   
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey });
   const prompt = `Dados atuais para: ${symbols.join(', ')}. Retorne array JSON: [{"symbol": "TICKER", "price": 0.00, "change": 0.0, "yield": 0.0, "lastDividendValue": 0.00, "nextPaymentDate": "YYYY-MM-DD"}]`;
 
   try {
@@ -65,7 +76,6 @@ export async function fetchRealMarketData(symbols: string[]) {
     const jsonMatch = text.match(/\[.*\]/s);
     const data = jsonMatch ? JSON.parse(jsonMatch[0]) : [];
     
-    // Extract sources from grounding chunks as required by search grounding rules
     const sources = response.candidates?.[0]?.groundingMetadata?.groundingChunks?.map((chunk: any) => ({
       title: chunk.web?.title || 'B3 Data',
       uri: chunk.web?.uri || '#'
@@ -73,15 +83,15 @@ export async function fetchRealMarketData(symbols: string[]) {
 
     return { data, sources };
   } catch (error) {
-    console.error("Erro ao buscar dados de mercado:", error);
     return { data: [], sources: [] };
   }
 }
 
 export async function getPortfolioAdvice(portfolio: any[]) {
-  if (portfolio.length === 0) return { text: "Adicione ativos." };
+  const apiKey = getApiKey();
+  if (!apiKey || portfolio.length === 0) return { text: "Adicione ativos." };
   
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey });
   const summary = portfolio.map(p => `${p.asset.symbol}`).join(', ');
   const prompt = `Avalie brevemente esta carteira B3 focada em dividendos: ${summary}.`;
   
@@ -91,15 +101,16 @@ export async function getPortfolioAdvice(portfolio: any[]) {
       contents: prompt,
     });
     return { text: response.text || "Monitorando..." };
-  } catch (error) {
-    console.error("Erro ao obter conselhos:", error);
+  } catch {
     return { text: "Processando dividendos..." };
   }
 }
 
 export async function getSimulationInsight(total: number, aporte: number, anos: number) {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  // Fix: changed 'years' to 'anos' to match the function parameter name
+  const apiKey = getApiKey();
+  if (!apiKey) return "Dividendos aceleram o patrimônio.";
+  
+  const ai = new GoogleGenAI({ apiKey });
   const prompt = `Efeito bola de neve para R$${total} e aportes de R$${aporte} em ${anos} anos.`;
   try {
     const response = await ai.models.generateContent({
@@ -107,8 +118,7 @@ export async function getSimulationInsight(total: number, aporte: number, anos: 
       contents: prompt,
     });
     return response.text || "Juros compostos são poderosos.";
-  } catch (error) {
-    console.error("Erro no insight de simulação:", error);
+  } catch {
     return "Reinvestir dividendos é o segredo.";
   }
 }
