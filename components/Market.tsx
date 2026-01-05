@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Asset } from '../types';
-import { TrendingUp, TrendingDown, ExternalLink, Info, Activity } from 'lucide-react';
+import { TrendingUp, TrendingDown, ExternalLink, Activity, Globe, Zap } from 'lucide-react';
 
 interface MarketProps {
   marketAssets: Asset[];
@@ -10,89 +10,85 @@ interface MarketProps {
 
 const Market: React.FC<MarketProps> = ({ marketAssets, sources }) => {
   return (
-    <div className="space-y-8 animate-in fade-in duration-700">
-      <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+    <div className="space-y-10 animate-in fade-in duration-700">
+      <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
-          <div className="flex items-center gap-2 mb-2">
-            <Activity size={20} className="text-indigo-400" />
-            <h2 className="text-3xl font-bold">Painel B3 Real</h2>
-          </div>
-          <p className="text-slate-400">Dados monitorados automaticamente via Google Finance & Gemini</p>
+          <h2 className="text-3xl md:text-5xl font-black uppercase tracking-tighter">Mercado B3</h2>
+          <p className="text-slate-500 font-medium">Cotações reais via Yahoo Finance API</p>
         </div>
-        {sources && sources.length > 0 && (
-          <div className="flex flex-wrap gap-2 max-w-md bg-slate-900/50 p-3 rounded-2xl border border-slate-800">
-            <div className="flex items-center gap-1 text-[10px] text-slate-500 mr-2 uppercase font-black">
-              <Info size={12} /> Fontes Ativas:
-            </div>
-            {sources.slice(0, 4).map((source, i) => (
+        
+        <div className="flex items-center gap-3 bg-indigo-600/5 px-6 py-4 rounded-3xl border border-indigo-500/10">
+          <Zap size={20} className="text-indigo-400" />
+          <div>
+            <p className="text-[10px] font-black uppercase text-indigo-400 tracking-widest leading-none mb-1">Status</p>
+            <p className="text-sm font-bold text-slate-300">Sincronizado</p>
+          </div>
+        </div>
+      </header>
+
+      {sources && sources.length > 0 && (
+        <div className="bg-slate-900/40 p-5 rounded-[2rem] border border-slate-800">
+          <p className="text-[10px] font-black uppercase text-slate-500 tracking-widest mb-4 flex items-center gap-2">
+            <Globe size={14} /> Fonte dos Dados
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {sources.map((source, i) => (
               <a 
                 key={i} 
                 href={source.uri} 
                 target="_blank" 
                 rel="noreferrer"
-                className="text-[10px] text-indigo-400 hover:text-indigo-300 transition-colors"
+                className="px-4 py-2 bg-slate-800 rounded-xl text-xs font-bold text-slate-400 hover:text-indigo-400 transition-all flex items-center gap-2"
               >
-                • {source.title.split('|')[0].trim()}
+                <ExternalLink size={12} />
+                {source.title}
               </a>
             ))}
           </div>
-        )}
-      </header>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         {marketAssets.map((asset) => (
-          <div key={asset.symbol} className="p-8 bg-slate-900/40 border border-slate-800 rounded-[2.5rem] hover:border-indigo-500/50 transition-all group relative overflow-hidden">
-            <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
-               <Activity size={80} className="text-indigo-400" />
-            </div>
-            
-            <div className="flex justify-between items-start mb-6">
+          <div key={asset.symbol} className="p-8 bg-slate-900 border border-slate-800 rounded-[2.5rem] hover:border-indigo-500/30 transition-all group">
+            <div className="flex justify-between items-start mb-8">
               <div className="flex items-center gap-4">
-                <div className="w-14 h-14 bg-indigo-600/20 rounded-2xl flex items-center justify-center font-black text-indigo-400 text-sm shadow-inner">
+                <div className="w-14 h-14 bg-indigo-600/10 rounded-2xl flex items-center justify-center font-black text-indigo-500 text-sm border border-indigo-500/10 group-hover:bg-indigo-600 group-hover:text-white transition-all">
                   {asset.symbol.substring(0, 4)}
                 </div>
                 <div>
-                  <h4 className="font-bold text-xl group-hover:text-indigo-400 transition-colors">{asset.symbol}</h4>
-                  <p className="text-xs text-slate-500 font-medium uppercase">{asset.name}</p>
+                  <h4 className="font-black text-xl">{asset.symbol}</h4>
+                  <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest truncate max-w-[120px]">{asset.name}</p>
                 </div>
               </div>
               <a 
-                href={`https://statusinvest.com.br/${asset.type === 'FII' ? 'fundos-imobiliarios' : 'acoes'}/${asset.symbol.toLowerCase()}`}
+                href={`https://statusinvest.com.br/${asset.symbol.length === 6 ? 'fundos-imobiliarios' : 'acoes'}/${asset.symbol.toLowerCase()}`}
                 target="_blank"
                 rel="noreferrer"
-                className="p-3 bg-slate-800/50 hover:bg-indigo-600 rounded-xl text-slate-400 hover:text-white transition-all"
+                className="p-3 bg-slate-800 rounded-xl text-slate-500 hover:text-white transition-all"
               >
                 <ExternalLink size={18} />
               </a>
             </div>
 
-            <div className="flex items-end justify-between relative z-10">
+            <div className="flex items-end justify-between">
               <div>
-                <p className="text-sm text-slate-500 font-bold uppercase tracking-widest mb-1">Preço Agora</p>
-                <p className="text-4xl font-black tracking-tighter">R$ {asset.price.toFixed(2)}</p>
-                <div className={`flex items-center gap-1 text-sm font-bold mt-2 ${asset.change >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                <p className="text-[10px] text-slate-600 font-black uppercase tracking-[0.2em] mb-1">Preço Atual</p>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-3xl font-black">R$ {asset.price.toFixed(2)}</span>
+                </div>
+                <div className={`flex items-center gap-1 text-sm font-black mt-2 ${asset.change >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                   {asset.change >= 0 ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
                   {asset.change >= 0 ? '+' : ''}{asset.change.toFixed(2)}%
                 </div>
               </div>
-              {asset.yield !== undefined && (
-                <div className="text-right">
-                  <p className="text-[10px] text-slate-500 uppercase tracking-widest font-black mb-1">DY Anual</p>
-                  <div className="px-3 py-1 bg-indigo-600/10 rounded-full border border-indigo-500/20">
-                    <p className="text-indigo-400 font-black">{(asset.yield * 100).toFixed(1)}%</p>
-                  </div>
+              
+              <div className="text-right">
+                <p className="text-[10px] text-slate-600 font-black uppercase tracking-widest mb-1">DY Anual</p>
+                <div className="px-4 py-2 bg-indigo-500/10 rounded-2xl">
+                  <p className="text-indigo-400 font-black text-sm">{(asset.yield! * 100).toFixed(1)}%</p>
                 </div>
-              )}
-            </div>
-            
-            <div className="mt-8 pt-6 border-t border-slate-800/50 flex justify-between items-center">
-              <div className="flex items-center gap-2">
-                <div className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
-                <span className="text-[10px] text-slate-600 font-bold uppercase tracking-widest">Live Feed</span>
               </div>
-              <button className="text-[10px] font-black text-indigo-500 hover:text-indigo-400 uppercase tracking-widest">
-                Analisar Ativo
-              </button>
             </div>
           </div>
         ))}

@@ -9,49 +9,35 @@ import {
   RefreshCcw,
   Zap,
   Activity,
-  Coins,
-  AlertTriangle,
-  LogOut
+  Globe,
+  ShieldCheck
 } from 'lucide-react';
 import { Asset, PortfolioItem } from './types';
-import { MOCK_ASSETS, INITIAL_PORTFOLIO, B3_SUGGESTIONS } from './constants';
+import { INITIAL_PORTFOLIO, B3_SUGGESTIONS } from './constants';
 import Dashboard from './components/Dashboard';
 import Portfolio from './components/Portfolio';
 import Market from './components/Market';
 import Simulator from './components/Simulator';
-import { fetchRealMarketData } from './services/gemini';
+import { fetchRealMarketData } from './services/gemini'; // Nome mantido no import por consistência de ref, mas lógica é nova
 
 const App: React.FC = () => {
   const [portfolio, setPortfolio] = useState<PortfolioItem[]>([]);
-  const [marketAssets, setMarketAssets] = useState<Asset[]>(MOCK_ASSETS);
-  const [cashBalance, setCashBalance] = useState<number>(0);
+  const [marketAssets, setMarketAssets] = useState<Asset[]>(B3_SUGGESTIONS.slice(0, 15));
+  const [cashBalance] = useState<number>(0);
   const [sources, setSources] = useState<{title: string, uri: string}[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
-  const [lastSync, setLastSync] = useState<Date>(new Date());
 
   useEffect(() => {
     try {
       const initialized = INITIAL_PORTFOLIO.map(item => {
-        const asset = B3_SUGGESTIONS.find(a => a.symbol === item.symbol) || 
-                      MOCK_ASSETS.find(a => a.symbol === item.symbol);
-        
-        if (!asset) return null;
-        
-        return { 
-          id: item.id, 
-          asset, 
-          quantity: item.quantity, 
-          averagePrice: item.averagePrice, 
-          purchaseDate: item.purchaseDate 
-        } as PortfolioItem;
+        const asset = B3_SUGGESTIONS.find(a => a.symbol === item.symbol);
+        return asset ? { ...item, asset } as PortfolioItem : null;
       }).filter((item): item is PortfolioItem => item !== null);
 
       setPortfolio(initialized);
       setLoading(false);
     } catch (err) {
-      setError("Falha ao inicializar banco de dados local.");
       setLoading(false);
     }
   }, []);
@@ -61,56 +47,26 @@ const App: React.FC = () => {
     setIsSyncing(true);
     
     const allSymbols = Array.from(new Set([
-      ...marketAssets.map(a => a?.symbol),
-      ...portfolio.map(p => p?.asset?.symbol)
-    ])).filter((s): s is string => !!s);
-    
-    if (allSymbols.length === 0) {
-      setIsSyncing(false);
-      return;
-    }
+      ...marketAssets.map(a => a.symbol),
+      ...portfolio.map(p => p.asset.symbol)
+    ])).filter(Boolean);
 
     try {
       const result = await fetchRealMarketData(allSymbols);
-      
       if (result.data && result.data.length > 0) {
         setMarketAssets(prev => {
           const updated = [...prev];
           result.data.forEach((realAsset: any) => {
             const index = updated.findIndex(a => a.symbol === realAsset.symbol);
-            const assetData = {
-              price: Number(realAsset.price) || 0, 
-              change: Number(realAsset.change) || 0,
-              yield: Number(realAsset.yield) || 0,
-              lastDividendValue: Number(realAsset.lastDividendValue) || 0,
-              nextPaymentDate: realAsset.nextPaymentDate
-            };
-
             if (index !== -1) {
-              updated[index] = { ...updated[index], ...assetData };
+              updated[index] = { ...updated[index], ...realAsset };
             } else {
-              const pItem = portfolio.find(p => p.asset.symbol === realAsset.symbol);
-              if (pItem) updated.push({ ...pItem.asset, ...assetData });
+              updated.push(realAsset);
             }
           });
           return updated;
         });
         setSources(result.sources || []);
-        setLastSync(new Date());
-
-        const todayStr = new Date().toISOString().split('T')[0];
-        let dailyEarnings = 0;
-        
-        portfolio.forEach(item => {
-          const mAsset = result.data.find((a: any) => a.symbol === item.asset.symbol);
-          if (mAsset && mAsset.nextPaymentDate === todayStr && mAsset.lastDividendValue > 0) {
-            dailyEarnings += item.quantity * mAsset.lastDividendValue;
-          }
-        });
-
-        if (dailyEarnings > 0) {
-          setCashBalance(prev => prev + dailyEarnings);
-        }
       }
     } catch (err) {
       console.error("Erro na sincronização:", err);
@@ -120,15 +76,13 @@ const App: React.FC = () => {
   }, [isSyncing, marketAssets, portfolio]);
 
   useEffect(() => {
-    if (!loading && !error) syncAllAssets();
-  }, [loading, error]);
+    if (!loading) syncAllAssets();
+  }, [loading]);
 
   const addAssetToPortfolio = (asset: Asset, quantity: number, averagePrice: number) => {
     const newItem: PortfolioItem = {
       id: Math.random().toString(36).substring(2, 11),
-      asset,
-      quantity,
-      averagePrice,
+      asset, quantity, averagePrice,
       purchaseDate: new Date().toISOString().split('T')[0],
     };
     setPortfolio(prev => [...prev, newItem]);
@@ -138,63 +92,67 @@ const App: React.FC = () => {
     setPortfolio(prev => prev.filter(item => item.id !== id));
   };
 
-  if (error) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-slate-950 text-rose-500 text-center p-8">
-        <div>
-          <AlertTriangle size={64} className="mx-auto mb-6" />
-          <h2 className="text-2xl font-black mb-4 uppercase">Erro de Renderização</h2>
-          <p className="text-slate-400 mb-8">{error}</p>
-          <button onClick={() => window.location.reload()} className="px-8 py-4 bg-indigo-600 text-white rounded-2xl font-black uppercase">Tentar Novamente</button>
-        </div>
+  if (loading) return (
+    <div className="flex h-screen items-center justify-center bg-slate-950">
+      <div className="flex flex-col items-center gap-4 text-indigo-500">
+        <RefreshCcw className="animate-spin" size={40} />
+        <p className="text-[10px] font-black uppercase tracking-[0.3em]">B3 Terminal Loading</p>
       </div>
-    );
-  }
-
-  if (loading) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-slate-950">
-        <div className="flex flex-col items-center gap-6">
-          <RefreshCcw className="animate-spin text-indigo-500" size={64} />
-          <p className="text-slate-500 font-black tracking-widest text-xs uppercase animate-pulse">Iniciando Terminal B3...</p>
-        </div>
-      </div>
-    );
-  }
+    </div>
+  );
 
   return (
     <Router>
-      <div className="flex h-screen bg-slate-950 text-slate-100 overflow-hidden font-sans">
-        <aside className="hidden lg:flex flex-col w-72 bg-slate-900/50 border-r border-slate-800 p-8">
-          <div className="flex items-center gap-3 mb-12 px-2">
-            <div className="p-3 bg-indigo-600 rounded-2xl shadow-xl">
-              <TrendingUp size={28} className="text-white" />
+      <div className="flex flex-col lg:flex-row h-screen bg-slate-950 text-slate-100 overflow-hidden font-sans">
+        
+        {/* Desktop Sidebar */}
+        <aside className="hidden lg:flex flex-col w-72 bg-slate-900/40 border-r border-slate-800 p-8 shrink-0">
+          <div className="flex items-center gap-3 mb-12">
+            <div className="p-2.5 bg-indigo-600 rounded-xl">
+              <TrendingUp size={24} className="text-white" />
             </div>
-            <div>
-              <h1 className="text-2xl font-black tracking-tighter uppercase">B3 Master</h1>
-            </div>
+            <h1 className="text-2xl font-black uppercase tracking-tighter">B3 Master</h1>
           </div>
-          <nav className="flex-1 space-y-3">
-            <SidebarLink to="/" icon={<LayoutDashboard size={20} />} label="Dashboard" />
-            <SidebarLink to="/portfolio" icon={<Wallet size={20} />} label="Carteira" />
-            <SidebarLink to="/market" icon={<Activity size={20} />} label="Mercado" />
-            <SidebarLink to="/simulator" icon={<Calculator size={20} />} label="Simulador" />
+          
+          <nav className="flex-1 space-y-2">
+            <SidebarLink to="/" icon={<LayoutDashboard size={20} />} label="Início" />
+            <SidebarLink to="/portfolio" icon={<Wallet size={20} />} label="Patrimônio" />
+            <SidebarLink to="/market" icon={<Activity size={20} />} label="Cotações" />
+            <SidebarLink to="/simulator" icon={<Calculator size={20} />} label="Projeções" />
           </nav>
-          <div className="mt-6 p-6 bg-emerald-600/10 rounded-[2rem] border border-emerald-500/20">
-            <div className="flex items-center gap-2 mb-3">
-              <Coins size={16} className="text-emerald-400" />
-              <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400">Saldo Disponível</span>
+
+          <div className="mt-auto pt-6 border-t border-slate-800">
+            <div className="p-4 bg-slate-800/40 rounded-2xl mb-4">
+              <div className="flex items-center gap-2 mb-1">
+                <ShieldCheck size={14} className="text-emerald-400" />
+                <span className="text-[9px] font-black uppercase text-slate-500">Motor de Dados</span>
+              </div>
+              <p className="text-xs font-bold text-slate-300">B3 Online (Yahoo)</p>
             </div>
-            <p className="text-2xl font-black text-emerald-400">R$ {cashBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
-          </div>
-          <div className="mt-8 pt-8 border-t border-slate-800">
-            <button onClick={syncAllAssets} disabled={isSyncing} className="w-full flex items-center justify-center gap-3 py-4 bg-slate-800 rounded-2xl text-[10px] font-black uppercase tracking-widest text-indigo-300">
-              {isSyncing ? <RefreshCcw className="animate-spin" size={16} /> : <Zap size={16} />} Atualizar B3
+            <button 
+              onClick={syncAllAssets} 
+              disabled={isSyncing}
+              className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 rounded-2xl font-black uppercase text-[10px] tracking-widest transition-all flex items-center justify-center gap-2 shadow-xl shadow-indigo-600/20"
+            >
+              <RefreshCcw size={14} className={isSyncing ? 'animate-spin' : ''} />
+              {isSyncing ? 'Sincronizando' : 'Atualizar Tudo'}
             </button>
           </div>
         </aside>
-        <main className="flex-1 overflow-y-auto bg-slate-950 pb-32 lg:pb-0 relative">
-          <div className="max-w-6xl mx-auto p-8 lg:p-16">
+
+        {/* Mobile Nav */}
+        <header className="lg:hidden flex items-center justify-between px-6 py-4 bg-slate-900 border-b border-slate-800">
+           <div className="flex items-center gap-2">
+            <TrendingUp size={20} className="text-indigo-500" />
+            <h1 className="text-sm font-black uppercase tracking-tighter">B3 Master</h1>
+          </div>
+          <button onClick={syncAllAssets} disabled={isSyncing} className="p-2 bg-slate-800 rounded-xl active:scale-95 transition-transform">
+            <RefreshCcw size={16} className={isSyncing ? 'animate-spin text-indigo-400' : 'text-slate-400'} />
+          </button>
+        </header>
+
+        <main className="flex-1 overflow-y-auto pb-24 lg:pb-0 relative custom-scrollbar">
+          <div className="max-w-6xl mx-auto p-6 md:p-10 lg:p-16">
             <Routes>
               <Route path="/" element={<Dashboard portfolio={portfolio} marketAssets={marketAssets} cashBalance={cashBalance} />} />
               <Route path="/portfolio" element={<Portfolio portfolio={portfolio} onRemove={removeAssetFromPortfolio} onAdd={addAssetToPortfolio} marketAssets={marketAssets} />} />
@@ -203,6 +161,13 @@ const App: React.FC = () => {
             </Routes>
           </div>
         </main>
+
+        <nav className="lg:hidden fixed bottom-0 left-0 right-0 bg-slate-900/90 backdrop-blur-xl border-t border-slate-800 px-2 py-3 flex justify-around items-center z-50">
+          <MobileNavLink to="/" icon={<LayoutDashboard size={22} />} label="Home" />
+          <MobileNavLink to="/portfolio" icon={<Wallet size={22} />} label="Ativos" />
+          <MobileNavLink to="/market" icon={<Activity size={22} />} label="Bolsa" />
+          <MobileNavLink to="/simulator" icon={<Calculator size={22} />} label="Futuro" />
+        </nav>
       </div>
     </Router>
   );
@@ -212,18 +177,19 @@ const SidebarLink: React.FC<{to: string, icon: any, label: string}> = ({ to, ico
   const location = useLocation();
   const isActive = location.pathname === to;
   return (
-    <Link to={to} className={`flex items-center gap-4 px-6 py-4 rounded-2xl transition-all ${isActive ? 'bg-indigo-600 text-white font-bold' : 'text-slate-400 hover:bg-slate-800/40'}`}>
+    <Link to={to} className={`flex items-center gap-3 px-5 py-4 rounded-2xl transition-all ${isActive ? 'bg-indigo-600 text-white font-bold shadow-lg shadow-indigo-600/30' : 'text-slate-500 hover:bg-slate-800/60 hover:text-slate-200'}`}>
       {icon} <span className="text-sm">{label}</span>
     </Link>
   );
 };
 
-const MobileNavLink: React.FC<{to: string, icon: any}> = ({ to, icon }) => {
+const MobileNavLink: React.FC<{to: string, icon: any, label: string}> = ({ to, icon, label }) => {
   const location = useLocation();
   const isActive = location.pathname === to;
   return (
-    <Link to={to} className={`p-4 rounded-2xl transition-all ${isActive ? 'bg-indigo-600 text-white' : 'text-slate-500'}`}>
-      {icon}
+    <Link to={to} className={`flex flex-col items-center gap-1 min-w-[60px] ${isActive ? 'text-indigo-400' : 'text-slate-600'}`}>
+      <div className={`${isActive ? 'bg-indigo-500/10 p-2 rounded-xl' : 'p-2'}`}>{icon}</div>
+      <span className="text-[9px] font-black uppercase tracking-widest">{label}</span>
     </Link>
   );
 };

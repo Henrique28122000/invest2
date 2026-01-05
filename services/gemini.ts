@@ -1,124 +1,111 @@
 
-import { GoogleGenAI } from "@google/genai";
-import { Asset, AssetType } from "../types";
+import { Asset, AssetType, PortfolioItem } from "../types";
 
-// Função para obter a chave de forma segura
-const getApiKey = () => {
-  try {
-    return window.process?.env?.API_KEY || (typeof process !== 'undefined' ? process.env.API_KEY : '');
-  } catch {
-    return '';
-  }
-};
-
-const cleanAIResponse = (text: string) => {
-  return text.replace(/```json/g, "").replace(/```/g, "").trim();
-};
-
-export async function searchAssetDetails(symbol: string): Promise<Asset | null> {
-  const apiKey = getApiKey();
-  if (!apiKey) return null;
-  
-  const ai = new GoogleGenAI({ apiKey });
-  
-  const prompt = `Aja como um terminal financeiro B3. Busque para o ticker ${symbol}:
-  1. Cotação atual (R$).
-  2. Último dividendo (valor em R$ por cota).
-  3. Data de pagamento.
-  4. Nome e tipo (Ação ou FII).
-  Retorne EXCLUSIVAMENTE um JSON: 
-  {"symbol": "${symbol.toUpperCase()}", "name": "Nome", "price": 0.00, "type": "Ação", "change": 0.0, "yield": 0.0, "lastDividendValue": 0.00, "nextPaymentDate": "YYYY-MM-DD"}`;
-
-  try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: prompt,
-      config: { tools: [{ googleSearch: {} }] },
-    });
-
-    const text = cleanAIResponse(response.text || "");
-    const jsonMatch = text.match(/\{.*\}/s);
-    if (jsonMatch) {
-      const data = JSON.parse(jsonMatch[0]);
-      return {
-        symbol: data.symbol.toUpperCase(),
-        name: data.name || data.symbol,
-        price: Number(data.price) || 0,
-        type: String(data.type).toLowerCase().includes('fii') ? AssetType.FII : AssetType.STOCK,
-        change: Number(data.change) || 0,
-        yield: Number(data.yield) || 0,
-        lastDividendValue: Number(data.lastDividendValue) || 0,
-        nextPaymentDate: data.nextPaymentDate || ""
-      };
-    }
-    return null;
-  } catch (error) {
-    console.error("Erro busca real:", error);
-    return null;
-  }
-}
-
+/**
+ * BUSCA DE DADOS DE MERCADO (Yahoo Finance API)
+ */
 export async function fetchRealMarketData(symbols: string[]) {
-  const apiKey = getApiKey();
-  if (!apiKey || symbols.length === 0) return { data: [], sources: [] };
+  if (symbols.length === 0) return { data: [], sources: [] };
   
-  const ai = new GoogleGenAI({ apiKey });
-  const prompt = `Dados atuais para: ${symbols.join(', ')}. Retorne array JSON: [{"symbol": "TICKER", "price": 0.00, "change": 0.0, "yield": 0.0, "lastDividendValue": 0.00, "nextPaymentDate": "YYYY-MM-DD"}]`;
-
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: prompt,
-      config: { tools: [{ googleSearch: {} }] },
-    });
-
-    const text = cleanAIResponse(response.text || "[]");
-    const jsonMatch = text.match(/\[.*\]/s);
-    const data = jsonMatch ? JSON.parse(jsonMatch[0]) : [];
+    const yahooSymbols = symbols.map(s => s.endsWith('.SA') ? s : `${s}.SA`).join(',');
+    const proxyUrl = `https://api.allorigins.win/raw?url=`;
+    const targetUrl = encodeURIComponent(`https://query1.finance.yahoo.com/v7/finance/quote?symbols=${yahooSymbols}`);
     
-    const sources = response.candidates?.[0]?.groundingMetadata?.groundingChunks?.map((chunk: any) => ({
-      title: chunk.web?.title || 'B3 Data',
-      uri: chunk.web?.uri || '#'
-    })) || [];
+    const response = await fetch(`${proxyUrl}${targetUrl}`);
+    if (!response.ok) throw new Error("Erro na rede");
+    
+    const json = await response.json();
+    const results = json?.quoteResponse?.result || [];
+    
+    const data = results.map((res: any) => ({
+      symbol: res.symbol.replace('.SA', ''),
+      price: res.regularMarketPrice || 0,
+      change: res.regularMarketChangePercent || 0,
+      name: res.longName || res.shortName || res.symbol,
+      yield: (res.trailingAnnualDividendYield) || 0,
+      lastDividendValue: res.trailingAnnualDividendRate || 0,
+      nextPaymentDate: "" 
+    }));
 
-    return { data, sources };
+    return { 
+      data, 
+      sources: [{ title: "B3 / Yahoo Finance", uri: "https://finance.yahoo.com" }] 
+    };
   } catch (error) {
+    console.error("Erro ao buscar mercado:", error);
     return { data: [], sources: [] };
   }
 }
 
-export async function getPortfolioAdvice(portfolio: any[]) {
-  const apiKey = getApiKey();
-  if (!apiKey || portfolio.length === 0) return { text: "Adicione ativos." };
-  
-  const ai = new GoogleGenAI({ apiKey });
-  const summary = portfolio.map(p => `${p.asset.symbol}`).join(', ');
-  const prompt = `Avalie brevemente esta carteira B3 focada em dividendos: ${summary}.`;
-  
+export async function searchAssetDetails(symbol: string): Promise<Asset | null> {
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: prompt,
-    });
-    return { text: response.text || "Monitorando..." };
-  } catch {
-    return { text: "Processando dividendos..." };
+    const cleanSymbol = symbol.trim().toUpperCase().replace('.SA', '');
+    if (!cleanSymbol) return null;
+
+    const proxyUrl = `https://api.allorigins.win/raw?url=`;
+    const targetUrl = encodeURIComponent(`https://query1.finance.yahoo.com/v7/finance/quote?symbols=${cleanSymbol}.SA`);
+    
+    const response = await fetch(`${proxyUrl}${targetUrl}`);
+    const json = await response.json();
+    const res = json?.quoteResponse?.result?.[0];
+
+    if (!res) return null;
+
+    return {
+      symbol: cleanSymbol,
+      name: res.longName || res.shortName || cleanSymbol,
+      price: res.regularMarketPrice || 0,
+      type: cleanSymbol.length === 6 ? AssetType.FII : AssetType.STOCK,
+      change: res.regularMarketChangePercent || 0,
+      yield: res.trailingAnnualDividendYield || 0,
+      lastDividendValue: res.trailingAnnualDividendRate || 0,
+      nextPaymentDate: ""
+    };
+  } catch (e) {
+    return null;
   }
 }
 
-export async function getSimulationInsight(total: number, aporte: number, anos: number) {
-  const apiKey = getApiKey();
-  if (!apiKey) return "Dividendos aceleram o patrimônio.";
+/**
+ * MOTOR ESTRATÉGICO B3 (Substitui a IA Gemini)
+ * Analisa a carteira localmente e gera insights baseados em métricas financeiras.
+ */
+export function getPortfolioAdvice(portfolio: PortfolioItem[]) {
+  if (portfolio.length === 0) return { text: "Adicione ativos para receber uma análise estratégica da sua carteira." };
   
-  const ai = new GoogleGenAI({ apiKey });
-  const prompt = `Efeito bola de neve para R$${total} e aportes de R$${aporte} em ${anos} anos.`;
-  try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: prompt,
-    });
-    return response.text || "Juros compostos são poderosos.";
-  } catch {
-    return "Reinvestir dividendos é o segredo.";
+  const stocks = portfolio.filter(p => p.asset.type === AssetType.STOCK);
+  const fiis = portfolio.filter(p => p.asset.type === AssetType.FII);
+  const totalValue = portfolio.reduce((acc, p) => acc + (p.quantity * p.asset.price), 0);
+  
+  const stockWeight = stocks.reduce((acc, p) => acc + (p.quantity * p.asset.price), 0) / totalValue;
+  const fiiWeight = fiis.reduce((acc, p) => acc + (p.quantity * p.asset.price), 0) / totalValue;
+
+  // Lógica de Insights
+  if (stockWeight > 0.8) {
+    return { text: "Sua carteira está muito exposta a Ações. Considere aumentar a posição em FIIs para reduzir a volatilidade e gerar renda passiva mensal." };
   }
+  if (fiiWeight > 0.8) {
+    return { text: "Foco total em FIIs! Ótimo para renda, mas não esqueça que Ações podem oferecer maior potencial de crescimento de capital a longo prazo." };
+  }
+  if (portfolio.length < 5) {
+    return { text: "A diversificação é o único 'almoço grátis' no mercado financeiro. Considere adicionar mais setores para proteger seu patrimônio." };
+  }
+  
+  const highYielders = portfolio.filter(p => (p.asset.yield || 0) > 0.10);
+  if (highYielders.length > 0) {
+    return { text: `Você possui ativos de alto Yield como ${highYielders[0].asset.symbol}. Reinvista esses dividendos para acelerar o efeito dos juros compostos.` };
+  }
+
+  return { text: "Sua carteira parece bem equilibrada. Continue mantendo aportes constantes e foque no longo prazo." };
+}
+
+export function getSimulationInsight(total: number, aporte: number, anos: number) {
+  if (total > 1000000) {
+    return `Com este planejamento, você alcançará o patamar de Milionário em ${anos} anos. A disciplina é sua maior aliada.`;
+  }
+  if (aporte > 2000) {
+    return `Seus aportes de R$ ${aporte} são agressivos! Isso reduzirá drasticamente o tempo necessário para sua liberdade financeira.`;
+  }
+  return `O segredo não é quanto você ganha, mas quanto você aporta. Em ${anos} anos, seu esforço será recompensado.`;
 }
