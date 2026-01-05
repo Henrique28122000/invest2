@@ -1,5 +1,5 @@
 {
-  "name": "B3 Master Portfolio",
-  "description": "Uma plataforma completa de gestão de investimentos focada na B3, com monitoramento em tempo real, simulador de juros compostos e insights inteligentes via Gemini AI.",
+  "name": "B3 Master Portfolio - Local API Edition",
+  "description": "Gestão de investimentos B3 integrada com API local de alta fidelidade para cotações e dividendos.",
   "requestFramePermissions": []
 }

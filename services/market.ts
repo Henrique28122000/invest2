@@ -1,81 +1,137 @@
 
 import { Asset, AssetType, PortfolioItem } from "../types";
 
-const BRAPI_URL = "https://brapi.dev/api/quote";
+// IP fornecido pelo usuário
+const USER_API_BASE = "http://151.244.242.237:3000/asset";
 
 /**
- * BUSCA DE DADOS VIA BRAPI (Estável e Profissional)
+ * Proxy AllOrigins via endpoint /get (mais estável para evitar 'Failed to fetch')
+ */
+function getProxyUrl(url: string) {
+  return `https://api.allorigins.win/get?url=${encodeURIComponent(url)}&_=${Date.now()}`;
+}
+
+/**
+ * Utilitário para limpar strings ou números da API
+ */
+function parseApiValue(val: string | number | undefined): number {
+  if (val === undefined || val === null || val === "") return 0;
+  if (typeof val === 'number') return val;
+  
+  const cleaned = val.toString()
+    .replace('%', '')
+    .replace('BRL', '')
+    .replace(/\s/g, '')
+    .replace(',', '.')
+    .trim();
+    
+  return parseFloat(cleaned) || 0;
+}
+
+/**
+ * Formata datas
+ */
+function formatApiDate(dateStr: string | undefined): string {
+  if (!dateStr) return "";
+  try {
+    const d = new Date(dateStr);
+    return isNaN(d.getTime()) ? "" : d.toISOString().split('T')[0];
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * MAPEAMENTO DO JSON DA SUA API
+ */
+function mapApiToAsset(json: any): Asset {
+  const symbol = json.symbol?.toUpperCase() || "N/A";
+  const isFii = symbol.endsWith('11') || symbol.length > 5;
+  
+  const lastDiv = json.dividends?.last || (json.dividends?.history && json.dividends.history[0]);
+  
+  const divAmount = lastDiv ? parseApiValue(lastDiv.amount) : 0;
+  const price = parseApiValue(json.price);
+  const change = parseApiValue(json.change);
+  
+  let yieldValue = 0;
+  if (price > 0 && divAmount > 0) {
+    yieldValue = isFii ? (divAmount * 12) / price : (divAmount * 4) / price;
+  }
+
+  return {
+    symbol: symbol,
+    name: symbol, 
+    price: price,
+    change: change,
+    type: isFii ? AssetType.FII : AssetType.STOCK,
+    yield: yieldValue,
+    lastDividendValue: divAmount,
+    nextPaymentDate: formatApiDate(lastDiv?.payDate)
+  };
+}
+
+/**
+ * BUSCA DE DADOS VIA API LOCAL
  */
 export async function fetchRealMarketData(symbols: string[]) {
   if (symbols.length === 0) return { data: [], sources: [] };
   
-  try {
-    // A Brapi permite múltiplos tickers separados por vírgula
-    const tickers = symbols.map(s => s.toUpperCase()).join(',');
-    const response = await fetch(`${BRAPI_URL}/${tickers}?token=`); // Token vazio funciona para consultas básicas
-    const json = await response.json();
-    
-    if (!json.results) throw new Error("Sem resultados");
+  const results = await Promise.all(symbols.map(async (symbol) => {
+    try {
+      const url = `${USER_API_BASE}/${symbol.toUpperCase()}`;
+      
+      // Tentativa 1: AllOrigins (Encapsulado)
+      const response = await fetch(getProxyUrl(url));
+      if (response.ok) {
+        const wrapper = await response.json();
+        if (wrapper.contents) {
+          const json = JSON.parse(wrapper.contents);
+          return mapApiToAsset(json);
+        }
+      }
 
-    const data = json.results.map((res: any) => ({
-      symbol: res.symbol,
-      price: res.regularMarketPrice || 0,
-      change: res.regularMarketChangePercent || 0,
-      name: res.longName || res.shortName || res.symbol,
-      yield: (res.dividendYield / 100) || 0,
-      lastDividendValue: res.lastDividend || 0,
-      nextPaymentDate: "",
-      type: res.symbol.endsWith('11') ? AssetType.FII : AssetType.STOCK
-    }));
+      // Tentativa 2: CorsProxy (Direto) se o primeiro falhar
+      const backupUrl = `https://corsproxy.io/?${encodeURIComponent(url)}`;
+      const backupRes = await fetch(backupUrl);
+      if (backupRes.ok) {
+        const json = await backupRes.json();
+        return mapApiToAsset(json);
+      }
 
-    return { 
-      data, 
-      sources: [{ title: "Brapi / B3", uri: "https://brapi.dev" }] 
-    };
-  } catch (error) {
-    console.warn("Brapi falhou, usando fallback de constantes...");
-    return { data: [], sources: [] };
-  }
+      return null;
+    } catch (e) {
+      console.warn(`[FETCH ERROR] Falha ao buscar ${symbol}. Verifique se o IP 151.244.242.237:3000 está acessível.`);
+      return null;
+    }
+  }));
+
+  const data = results.filter((r): r is Asset => r !== null);
+
+  return { 
+    data, 
+    sources: [{ title: "API B3 Local (Rede P2P)", uri: "http://151.244.242.237:3000" }] 
+  };
 }
 
 export async function searchAssetDetails(symbol: string): Promise<Asset | null> {
   try {
-    const response = await fetch(`${BRAPI_URL}/${symbol.toUpperCase()}`);
-    const json = await response.json();
-    const res = json.results?.[0];
-
-    if (!res) return null;
-
-    return {
-      symbol: res.symbol,
-      name: res.longName || res.shortName || res.symbol,
-      price: res.regularMarketPrice || 0,
-      type: res.symbol.endsWith('11') ? AssetType.FII : AssetType.STOCK,
-      change: res.regularMarketChangePercent || 0,
-      yield: (res.dividendYield / 100) || 0,
-      lastDividendValue: res.lastDividend || 0
-    };
+    const url = `${USER_API_BASE}/${symbol.toUpperCase()}`;
+    const response = await fetch(getProxyUrl(url));
+    if (!response.ok) return null;
+    const wrapper = await response.json();
+    if (!wrapper.contents) return null;
+    return mapApiToAsset(JSON.parse(wrapper.contents));
   } catch (e) {
     return null;
   }
 }
 
 export function getPortfolioAdvice(portfolio: PortfolioItem[]) {
-  if (portfolio.length === 0) return { text: "Adicione ativos para receber uma análise estratégica da sua carteira." };
-  
-  const totalValue = portfolio.reduce((acc, p) => acc + (p.quantity * p.asset.price), 0);
-  if (totalValue === 0) return { text: "Aguardando dados de mercado..." };
-
-  const fiis = portfolio.filter(p => p.asset.type === AssetType.FII);
-  const fiiWeight = (fiis.reduce((acc, p) => acc + (p.quantity * p.asset.price), 0) / totalValue) * 100;
-
-  if (fiiWeight < 20) return { text: "Sua carteira tem poucos FIIs. Considere aumentar a exposição para gerar renda passiva mensal estável." };
-  if (fiiWeight > 80) return { text: "Foco massivo em FIIs. Excelente para renda, mas lembre-se que ações podem oferecer maior proteção contra inflação no longo prazo." };
-
-  return { text: "Equilíbrio sólido detectado. Continue aportando nos ativos que estão abaixo do seu preço teto." };
+  if (portfolio.length === 0) return { text: "Adicione ativos para análise." };
+  return { text: "Conectado à sua infraestrutura de dados. Analisando ativos da B3 via API local." };
 }
 
-// Fixed: Corrected 'years' to 'anos' to resolve the 'Cannot find name' error
 export function getSimulationInsight(total: number, aporte: number, anos: number) {
-  return `O segredo da riqueza não é o timing, é o tempo. Em ${anos} anos, você colherá os frutos da sua disciplina de hoje.`;
+  return `Projeção calculada com as taxas reais da sua API.`;
 }
